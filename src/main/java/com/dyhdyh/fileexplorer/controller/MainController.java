@@ -1,8 +1,11 @@
 package com.dyhdyh.fileexplorer.controller;
 
 import com.dyhdyh.fileexplorer.adb.ADB;
+import com.dyhdyh.fileexplorer.model.ProgressInfo;
 import com.dyhdyh.fileexplorer.model.RemoteFileInfo;
 import com.dyhdyh.fileexplorer.service.ADBService;
+import com.dyhdyh.fileexplorer.service.ProgressSocketServer;
+import com.dyhdyh.fileexplorer.service.SocketManager;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -27,12 +30,16 @@ public class MainController {
     @Autowired
     ADBService service;
 
+    @Autowired
+    ProgressSocketServer server;
+
+
     /**
      * ResponseBody样例
      *
      * @return
      */
-    @RequestMapping()
+    @RequestMapping("/")
     String getRemoteFileList(Model model, @RequestParam(required = false) String dir) {
         List<RemoteFileInfo> files;
         try {
@@ -60,7 +67,12 @@ public class MainController {
     boolean pullRemoteFile(Model model, @RequestParam String pullPath, @RequestParam String savePath) {
         try {
             //service.pull(pullPath, savePath);
-            ADB.pull(pullPath,savePath);
+            ADB.pull(pullPath, savePath, new ADB.OnReadLineListener<ProgressInfo>() {
+                @Override
+                public void onReadLine(ProgressInfo info) {
+                    SocketManager.sendObject(info);
+                }
+            });
             return true;
         } catch (Exception e) {
             e.printStackTrace();

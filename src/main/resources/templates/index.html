@@ -10,7 +10,7 @@
     <script src="https://cdn.bootcss.com/element-ui/2.3.7/index.js"></script>
 </head>
 <style>
-    #app {
+    #content {
         width: 75%;
         margin: auto;
         margin-top: 3%;
@@ -28,7 +28,7 @@
 </style>
 <body>
 <div id="app">
-    <div id="content">
+    <div id="content" style="position: absolute">
         <el-table
                 :data="files"
                 stripe
@@ -94,15 +94,55 @@
             </el-table-column>
         </el-table>
     </div>
+
+    <!--传输信息框-->
+    <div style="position: absolute;
+    width: 30%;
+    background-color: white;
+position: fixed">
+        <el-radio-group style="margin-bottom: 20px;">
+            <el-radio-button :label="false">展开</el-radio-button>
+            <el-radio-button :label="true">收起</el-radio-button>
+        </el-radio-group>
+        <el-menu>
+            <template>
+                <el-table
+                        :data="file_transfer.file_list"
+                        style="width: 100%">
+                    <el-table-column
+                            prop="path"
+                            label="路径"
+                            width="180">
+                    </el-table-column>
+                    <el-table-column
+                            width="50"
+                            prop="percent"
+                            label="进度">
+                        <template slot-scope="scope">
+                            <el-progress type="circle" width="40"
+                                         stroke-width="1"
+                                         :percentage="scope.row.percent"></el-progress>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </template>
+        </el-menu>
+    </div>
 </div>
 
 <script th:inline="javascript">
+
     new Vue({
         el: '#app',
         data: {
             currentSavePath: "",
             currentPath: "",
-            files: []
+            files: [],
+            file_transfer: {
+                file_list: [
+                    {path: '懵逼'}
+                ]
+            }
         },
         mounted: function () {
             var files = new Array()
@@ -111,8 +151,10 @@
                 name: "...",
                 directory: true,
             })
-            files.push.apply(files,[[${files}]])
+            files.push.apply(files, [[${files}]])
             Vue.set(this, "files", files)
+
+            this.registerWebSocket()
         },
         methods: {
             sortByName(a, b) {
@@ -155,10 +197,31 @@
                     .catch(function (response) {
                         console.log(response)
                     });
+            },
+            registerWebSocket() {
+                let ws = new WebSocket('ws://localhost:8080/progress')
+                ws.onopen = () => {
+                    // Web Socket 已连接上，使用 send() 方法发送数据
+                    console.log('连接打开...')
+                }
+                ws.onmessage = evt => {
+                    var obj = JSON.parse(evt.data)
+                    if (obj.completed) {
+                        console.log("导出成功-->大小:" + obj.formatSumSize + ",耗时:" + obj.consumeTime + ",速率:" + obj.speed)
+                    } else {
+                        console.log(obj.percent + "%")
+                    }
+                    this.file_transfer.file_list[0] = obj
+                    //不刷新的问题还未解决
+                    Vue.set(this, "file_transfer.file_list", this.file_transfer.file_list)
+                }
+                ws.onclose = function () {
+                    // 关闭 websocket
+                    console.log('连接关闭...')
+                }
             }
         }
     })
-
 </script>
 </body>
 </html>

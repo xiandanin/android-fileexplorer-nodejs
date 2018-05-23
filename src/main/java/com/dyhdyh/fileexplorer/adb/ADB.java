@@ -1,6 +1,10 @@
 package com.dyhdyh.fileexplorer.adb;
 
+import com.dyhdyh.fileexplorer.model.ProgressInfo;
+import com.dyhdyh.fileexplorer.utils.DateUtils;
 import com.dyhdyh.fileexplorer.utils.FileUtils;
+
+import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.DataInputStream;
@@ -9,33 +13,33 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * author  dengyuhan
  * created 2018/5/22 11:22
  */
 public class ADB {
+    private static SimpleDateFormat minuteFormat = new SimpleDateFormat("mm分ss秒");
+    private static SimpleDateFormat hourFormat = new SimpleDateFormat("HH小时mm分ss秒");
 
-    public static List<String> getDevices() {
-        List<String> devices = new ArrayList<String>();
-        List<String> result = exec("adb devices");
-        for (int i = 1; i < result.size() - 1; i++) {
-            String line = result.get(i);
-            //devices.add(line.split(" "));
-        }
-        return devices;
-    }
-
-
-    public static void pull(String remotePath, String localPath) {
-        exec(String.format("adb pull %s %s", remotePath, localPath + File.separator + FileUtils.getFileName(remotePath)), new OnReadLineListener() {
-            @Override
-            public void onReadLine(String line) {
-
-            }
-        });
+    public static void pull(String remotePath, String localPath, OnReadLineListener<ProgressInfo> listener) {
+        exec(String.format("adb pull %s %s", remotePath, localPath + File.separator + FileUtils.getFileName(remotePath)),
+                new OnReadLineListener<String>() {
+                    public void onReadLine(String line) {
+                        System.out.println(line);
+                        if (listener != null) {
+                            ProgressInfo info = transformerProgressInfo(line);
+                            if (info != null) {
+                                listener.onReadLine(info);
+                            }
+                        }
+                    }
+                });
     }
 
 
@@ -56,7 +60,7 @@ public class ADB {
             BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
             while (true) {
                 String readLine = bufferedReader.readLine();
-                if (listener != null) {
+                if (listener != null && !StringUtils.isEmpty(readLine)) {
                     listener.onReadLine(readLine);
                 }
                 if (readLine == null) {
@@ -72,8 +76,58 @@ public class ADB {
         return result;
     }
 
-    public interface OnReadLineListener {
-        void onReadLine(String line);
+    private static ProgressInfo transformerProgressInfo(String line) {
+        String percentRegex = "\\d+%";
+        Matcher matcher = Pattern.compile(percentRegex).matcher(line);
+        if (matcher.find()) {
+            //进度百分比
+            ProgressInfo info = new ProgressInfo();
+            info.setCompleted(false);
+            String path = line.substring(line.indexOf("/"));
+            info.setPath(path);
+            info.setPercent(Integer.parseInt(matcher.group().replace("%", "")));
+            return info;
+        } else {
+            String numberRegex = "(\\d+(\\.\\d+)?)";
+            Matcher numberMatcher = Pattern.compile(numberRegex).matcher(line);
+            List<String> number = new ArrayList<>();
+            while (numberMatcher.find()) {
+                number.add(numberMatcher.group());
+            }
+            int numberCount = number.size();
+            if (numberCount > 0) {
+                ProgressInfo info = new ProgressInfo();
+                String path = line.substring(0, line.indexOf(":"));
+                info.setPath(path);
+                info.setCompleted(true);
+                for (int i = 0; i < numberCount; i++) {
+                    long consumeTime = (long) (Float.parseFloat(number.get(numberCount - 1)) * 1000);
+                    info.setConsumeTime(transformerConsumeTime(consumeTime));
+                    String size = number.get(numberCount - 2);//.replace("bytes","").replace(" ","");
+                    info.setFormatSumSize(FileUtils.formatSize(Long.parseLong(size)));
+                    info.setSpeed(number.get(numberCount - 3) + "M/秒");
+                }
+                return info;
+            }
+        }
+        return null;
+    }
+
+
+    private static String transformerConsumeTime(long time) {
+        if (time <= DateUtils.SECOND_IN_MILLIS) {
+            return time / DateUtils.SECOND_IN_MILLIS + "毫秒秒";
+        } else if (time <= DateUtils.MINUTE_IN_MILLIS) {
+            return time / DateUtils.MINUTE_IN_MILLIS + "秒";
+        } else if (time <= DateUtils.HOUR_IN_MILLIS) {
+            return minuteFormat.format(time);
+        } else {
+            return hourFormat.format(time);
+        }
+    }
+
+    public interface OnReadLineListener<T> {
+        void onReadLine(T line);
     }
 
 }

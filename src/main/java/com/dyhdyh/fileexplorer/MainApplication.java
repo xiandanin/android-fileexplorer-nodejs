@@ -12,7 +12,8 @@ import org.springframework.context.annotation.ComponentScan;
 @ComponentScan(basePackages = {
         "com.dyhdyh.fileexplorer.controller",
         "com.dyhdyh.fileexplorer.service",
-        "com.dyhdyh.fileexplorer.filter"})
+        "com.dyhdyh.fileexplorer.filter",
+        "com.dyhdyh.fileexplorer.config"})
 @EnableAutoConfiguration
 @SpringBootApplication
 public class MainApplication {
