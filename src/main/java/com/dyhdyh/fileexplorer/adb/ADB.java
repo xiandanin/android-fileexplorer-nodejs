@@ -6,11 +6,13 @@ import com.dyhdyh.fileexplorer.utils.FileUtils;
 
 import org.springframework.util.StringUtils;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.text.SimpleDateFormat;
@@ -30,12 +32,17 @@ public class ADB {
     public static void pull(String remotePath, String localPath, OnReadLineListener<ProgressInfo> listener) {
         exec(String.format("adb pull %s %s", remotePath, localPath + File.separator + FileUtils.getFileName(remotePath)),
                 new OnReadLineListener<String>() {
+                    private int progress;
+
                     public void onReadLine(String line) {
-                        System.out.println(line);
                         if (listener != null) {
                             ProgressInfo info = transformerProgressInfo(line);
                             if (info != null) {
-                                listener.onReadLine(info);
+                                if (progress != info.getPercent()) {
+                                    progress = info.getPercent();
+                                    System.out.println(line);
+                                    //listener.onReadLine(info);
+                                }
                             }
                         }
                     }
@@ -51,6 +58,9 @@ public class ADB {
         List<String> result = new ArrayList<String>();
         try {
             Process process = Runtime.getRuntime().exec(command);
+            Thread t=new Thread(new InputStreamRunnable(process.getErrorStream(),"ErrorStream"));
+            t.start();
+
             DataOutputStream dataOutputStream = new DataOutputStream(process.getOutputStream());
             dataOutputStream.writeBytes("exit\n");
             dataOutputStream.flush();
@@ -60,11 +70,11 @@ public class ADB {
             BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
             while (true) {
                 String readLine = bufferedReader.readLine();
-                if (listener != null && !StringUtils.isEmpty(readLine)) {
-                    listener.onReadLine(readLine);
-                }
-                if (readLine == null) {
+                if (StringUtils.isEmpty(readLine)) {
                     break;
+                }
+                if (listener != null) {
+                    listener.onReadLine(readLine);
                 }
                 result.add(readLine);
             }
@@ -86,6 +96,7 @@ public class ADB {
             String path = line.substring(line.indexOf("/"));
             info.setPath(path);
             info.setPercent(Integer.parseInt(matcher.group().replace("%", "")));
+            //info.setPercent(matcher.group());
             return info;
         } else {
             String numberRegex = "(\\d+(\\.\\d+)?)";
@@ -130,4 +141,38 @@ public class ADB {
         void onReadLine(T line);
     }
 
+    public static class InputStreamRunnable implements Runnable
+    {
+        BufferedReader bReader=null;
+        String type=null;
+        public InputStreamRunnable(InputStream is, String _type)
+        {
+            try
+            {
+                bReader=new BufferedReader(new InputStreamReader(new BufferedInputStream(is),"UTF-8"));
+                type=_type;
+            }
+            catch(Exception ex)
+            {
+            }
+        }
+        public void run()
+        {
+            String line;
+            int lineNum=0;
+
+            try
+            {
+                while((line=bReader.readLine())!=null)
+                {
+                    lineNum++;
+                    //Thread.sleep(200);
+                }
+                bReader.close();
+            }
+            catch(Exception ex)
+            {
+            }
+        }
+    }
 }
